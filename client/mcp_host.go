@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -16,6 +17,13 @@ type ServerConfig struct {
 	URL     string
 	Name    string
 	Enabled bool
+}
+
+// ServerStatus 服务器状态记录
+type ServerStatus struct {
+	LastPingTime    time.Time
+	LastPingSuccess bool
+	LastError       string
 }
 
 // MCPHost MCP服务器管理器
@@ -30,6 +38,8 @@ type MCPHost struct {
 	// 记录每个服务器的提示能力
 	Prompts           map[string][]mcp.Prompt
 	InitializeResults map[string]*mcp.InitializeResult
+	// 记录服务器状态
+	serverStatus map[string]ServerStatus
 }
 
 // NewMCPHost 创建新的MCP管理器
@@ -41,6 +51,7 @@ func NewMCPHost() *MCPHost {
 		Resources:         make(map[string][]mcp.Resource),
 		Prompts:           make(map[string][]mcp.Prompt),
 		InitializeResults: make(map[string]*mcp.InitializeResult),
+		serverStatus:      make(map[string]ServerStatus),
 	}
 }
 
@@ -119,7 +130,7 @@ func (m *MCPHost) ConnectServer(ctx context.Context, serverName string) error {
 	m.clients[serverName] = cli
 	m.InitializeResults[serverName] = result
 	// 同步服务器能力
-	if err := m.SyncServerCapabilities(ctx, serverName); err != nil {
+	if err = m.SyncServerCapabilities(ctx, serverName); err != nil {
 		cli.Close()
 		delete(m.clients, serverName)
 		return fmt.Errorf("failed to sync server capabilities for %s: %v", serverName, err)
@@ -267,4 +278,61 @@ func (m *MCPHost) GetPrompts(ctx context.Context, serverName string) ([]mcp.Prom
 	}
 
 	return result.Prompts, nil
+}
+
+// PingAll 检测所有服务器的连接状态
+func (m *MCPHost) PingAll(ctx context.Context) map[string]ServerStatus {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	// 如果serverStatus为nil，初始化它
+	if m.serverStatus == nil {
+		m.serverStatus = make(map[string]ServerStatus)
+	}
+
+	// 遍历所有客户端进行ping操作
+	for serverName, cli := range m.clients {
+		status := ServerStatus{
+			LastPingTime: time.Now(),
+		}
+
+		err := cli.Ping(ctx)
+		if err != nil {
+			status.LastPingSuccess = false
+			status.LastError = err.Error()
+			log.Printf("Ping failed for server %s: %v", serverName, err)
+		} else {
+			status.LastPingSuccess = true
+			status.LastError = ""
+		}
+
+		m.serverStatus[serverName] = status
+	}
+
+	return m.serverStatus
+}
+
+// GetServerStatus 获取指定服务器的状态
+func (m *MCPHost) GetServerStatus(serverName string) (ServerStatus, error) {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	if status, exists := m.serverStatus[serverName]; exists {
+		return status, nil
+	}
+	return ServerStatus{}, fmt.Errorf("server status not found: %s", serverName)
+}
+
+// GetAllServerStatus 获取所有服务器的状态
+func (m *MCPHost) GetAllServerStatus() map[string]ServerStatus {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	// 创建一个新的map来存储状态的副本
+	statusCopy := make(map[string]ServerStatus)
+	for k, v := range m.serverStatus {
+		statusCopy[k] = v
+	}
+
+	return statusCopy
 }

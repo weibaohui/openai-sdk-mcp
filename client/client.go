@@ -68,18 +68,11 @@ func main() {
 			continue
 		}
 
-		// 测试服务器连接状态
-		if err := host.Ping(ctx, server.Name); err != nil {
-			log.Printf("Ping failed for server %s: %v", server.Name, err)
-			continue
-		}
-
 		log.Printf("Successfully connected to server: %s", server.Name)
 	}
 
-	// content, toolResult, err := host.ProcessWithOpenAI(ctx, "请生成两个不大于10的随机数，并将这两个随机数进行求和，告诉我最终的结果")
+	// 示例：处理用户输入
 	content, toolResult, err := host.ProcessWithOpenAI(ctx, "请分析22+33=?这个算式，并调用对应方法，求结果")
-
 	if err != nil {
 		log.Printf("processWithOpenAI failed: %v", err)
 		return
@@ -87,4 +80,5 @@ func main() {
 	log.Printf("content = \n %s\n", content)
 	bytes, _ := json.MarshalIndent(toolResult, "", "  ")
 	log.Printf("result = \n %s\n", bytes)
+
 }
