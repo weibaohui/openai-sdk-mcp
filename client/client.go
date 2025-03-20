@@ -106,13 +106,22 @@ type MCPHost struct {
 	clients map[string]*client.SSEMCPClient
 	configs map[string]ServerConfig
 	mutex   sync.RWMutex
+	// 记录每个服务器的工具列表
+	Tools map[string][]mcp.Tool
+	// 记录每个服务器的资源能力
+	Resources map[string]mcp.Resource
+	// 记录每个服务器的提示能力
+	Prompts map[string]mcp.Prompt
 }
 
 // NewMCPHost 创建新的MCP管理器
 func NewMCPHost() *MCPHost {
 	return &MCPHost{
-		clients: make(map[string]*client.SSEMCPClient),
-		configs: make(map[string]ServerConfig),
+		clients:   make(map[string]*client.SSEMCPClient),
+		configs:   make(map[string]ServerConfig),
+		Tools:     make(map[string][]mcp.Tool),
+		Resources: make(map[string]mcp.Resource),
+		Prompts:   make(map[string]mcp.Prompt),
 	}
 }
 
@@ -162,6 +171,11 @@ func (m *MCPHost) ConnectServer(ctx context.Context, serverName string) error {
 		cli.Close()
 		return fmt.Errorf("failed to initialize client for %s: %v", serverName, err)
 	}
+
+	// // 获取并存储服务器能力信息
+	// m.Tools[serverName] = initResult
+	// m.Resources[serverName] = initResult.ResourceCapabilities
+	// m.Prompts[serverName] = initResult.PromptCapabilities
 
 	m.clients[serverName] = cli
 	return nil
@@ -357,4 +371,61 @@ func parseToolName(fullToolName string) (toolName, serverName string, err error)
 		return "", "", fmt.Errorf("invalid tool name format: %s", fullToolName)
 	}
 	return fullToolName[:lastIndex], fullToolName[lastIndex+1:], nil
+}
+
+// GetTools 获取指定服务器的工具列表
+func (m *MCPHost) GetTools(ctx context.Context, serverName string) ([]mcp.Tool, error) {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	cli, exists := m.clients[serverName]
+	if !exists {
+		return nil, fmt.Errorf("client not found: %s", serverName)
+	}
+
+	toolsRequest := mcp.ListToolsRequest{}
+	toolsResult, err := cli.ListTools(ctx, toolsRequest)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tools from server %s: %v", serverName, err)
+	}
+
+	return toolsResult.Tools, nil
+}
+
+// GetResources 获取指定服务器的资源能力
+func (m *MCPHost) GetResources(ctx context.Context, serverName string) ([]mcp.Resource, error) {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	cli, exists := m.clients[serverName]
+	if !exists {
+		return nil, fmt.Errorf("client not found: %s", serverName)
+	}
+
+	req := mcp.ListResourcesRequest{}
+	result, err := cli.ListResources(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get resources from server %s: %v", serverName, err)
+	}
+
+	return result.Resources, nil
+}
+
+// GetPrompts 获取指定服务器的提示能力
+func (m *MCPHost) GetPrompts(ctx context.Context, serverName string) ([]mcp.Prompt, error) {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	cli, exists := m.clients[serverName]
+	if !exists {
+		return nil, fmt.Errorf("client not found: %s", serverName)
+	}
+
+	req := mcp.ListPromptsRequest{}
+	result, err := cli.ListPrompts(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get prompts from server %s: %v", serverName, err)
+	}
+
+	return result.Prompts, nil
 }
