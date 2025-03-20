@@ -1,4 +1,4 @@
-package main
+package client
 
 import (
 	"context"
@@ -66,35 +66,39 @@ func (m *MCPHost) AddServer(config ServerConfig) error {
 
 // SyncServerCapabilities 同步服务器的工具、资源和提示能力
 func (m *MCPHost) SyncServerCapabilities(ctx context.Context, serverName string) error {
-	 
-	// 获取并记录服务器能力
+	// 获取服务器能力
 	tools, err := m.GetTools(ctx, serverName)
 	if err != nil {
 		return fmt.Errorf("failed to get tools for %s: %v", serverName, err)
 	}
-	m.Tools[serverName] = tools
 
 	resources, err := m.GetResources(ctx, serverName)
 	if err != nil {
 		return fmt.Errorf("failed to get resources for %s: %v", serverName, err)
 	}
-	m.Resources[serverName] = resources
 
 	prompts, err := m.GetPrompts(ctx, serverName)
 	if err != nil {
 		return fmt.Errorf("failed to get prompts for %s: %v", serverName, err)
 	}
+
+	// 只在更新共享资源时加锁
+	m.mutex.Lock()
+	m.Tools[serverName] = tools
+	m.Resources[serverName] = resources
 	m.Prompts[serverName] = prompts
+	m.mutex.Unlock()
 
 	return nil
 }
 
 // ConnectServer 连接到指定服务器
 func (m *MCPHost) ConnectServer(ctx context.Context, serverName string) error {
+	// 获取配置信息时加锁
 	m.mutex.Lock()
-	defer m.mutex.Unlock()
-
 	config, exists := m.configs[serverName]
+	m.mutex.Unlock()
+
 	if !exists {
 		return fmt.Errorf("server config not found: %s", serverName)
 	}
@@ -125,12 +129,20 @@ func (m *MCPHost) ConnectServer(ctx context.Context, serverName string) error {
 		cli.Close()
 		return fmt.Errorf("failed to initialize client for %s: %v", serverName, err)
 	}
+
+	// 更新共享资源时加锁
+	m.mutex.Lock()
 	m.clients[serverName] = cli
 	m.InitializeResults[serverName] = result
-	// 同步服务器能力
+	m.mutex.Unlock()
+
+	// 在锁外同步服务器能力
 	if err = m.SyncServerCapabilities(ctx, serverName); err != nil {
+		// 如果同步失败，需要清理资源
 		cli.Close()
+		m.mutex.Lock()
 		delete(m.clients, serverName)
+		m.mutex.Unlock()
 		return fmt.Errorf("failed to sync server capabilities for %s: %v", serverName, err)
 	}
 
@@ -223,10 +235,11 @@ func (m *MCPHost) GetAllTools(ctx context.Context) []openai.Tool {
 
 // GetTools 获取指定服务器的工具列表
 func (m *MCPHost) GetTools(ctx context.Context, serverName string) ([]mcp.Tool, error) {
+	// 获取客户端时加读锁
 	m.mutex.RLock()
-	defer m.mutex.RUnlock()
-
 	cli, exists := m.clients[serverName]
+	m.mutex.RUnlock()
+
 	if !exists {
 		return nil, fmt.Errorf("client not found: %s", serverName)
 	}
@@ -242,10 +255,11 @@ func (m *MCPHost) GetTools(ctx context.Context, serverName string) ([]mcp.Tool, 
 
 // GetResources 获取指定服务器的资源能力
 func (m *MCPHost) GetResources(ctx context.Context, serverName string) ([]mcp.Resource, error) {
+	// 获取客户端时加读锁
 	m.mutex.RLock()
-	defer m.mutex.RUnlock()
-
 	cli, exists := m.clients[serverName]
+	m.mutex.RUnlock()
+
 	if !exists {
 		return nil, fmt.Errorf("client not found: %s", serverName)
 	}
@@ -261,10 +275,11 @@ func (m *MCPHost) GetResources(ctx context.Context, serverName string) ([]mcp.Re
 
 // GetPrompts 获取指定服务器的提示能力
 func (m *MCPHost) GetPrompts(ctx context.Context, serverName string) ([]mcp.Prompt, error) {
+	// 获取客户端时加读锁
 	m.mutex.RLock()
-	defer m.mutex.RUnlock()
-
 	cli, exists := m.clients[serverName]
+	m.mutex.RUnlock()
+
 	if !exists {
 		return nil, fmt.Errorf("client not found: %s", serverName)
 	}

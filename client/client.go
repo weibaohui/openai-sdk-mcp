@@ -1,4 +1,4 @@
-package main
+package client
 
 import (
 	"context"
@@ -28,7 +28,7 @@ func initOpenAIClient(config OpenAIConfig) error {
 	return nil
 }
 
-func main() {
+func Run() {
 	// 初始化OpenAI客户端
 	openaiConfig := OpenAIConfig{
 		APIKey:  os.Getenv("OPENAI_API_KEY"),  // 请替换为实际的API密钥
