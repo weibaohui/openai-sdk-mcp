@@ -73,6 +73,12 @@ func main() {
 			continue
 		}
 
+		// 测试服务器连接状态
+		if err := host.Ping(ctx, server.Name); err != nil {
+			log.Printf("Ping failed for server %s: %v", server.Name, err)
+			continue
+		}
+
 		log.Printf("Successfully connected to server: %s", server.Name)
 	}
 
@@ -194,6 +200,24 @@ func (m *MCPHost) Close() {
 		cli.Close()
 	}
 	m.clients = make(map[string]*client.SSEMCPClient)
+}
+
+// Ping 检测指定服务器的连接状态
+func (m *MCPHost) Ping(ctx context.Context, serverName string) error {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	cli, exists := m.clients[serverName]
+	if !exists {
+		return fmt.Errorf("client not found: %s", serverName)
+	}
+
+	err := cli.Ping(ctx)
+	if err != nil {
+		return fmt.Errorf("ping failed for server %s: %v", serverName, err)
+	}
+
+	return nil
 }
 
 func (m *MCPHost) GetAllTools(ctx context.Context) []openai.Tool {
