@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+	"time"
 
 	"github.com/sashabaranov/go-openai"
 )
@@ -71,6 +72,28 @@ func main() {
 		log.Printf("Successfully connected to server: %s", server.Name)
 	}
 
+	// 启动定期ping检查
+	go func() {
+		ticker := time.NewTicker(30 * time.Second) // 每30秒执行一次
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				status := host.PingAll(ctx)
+				for serverName, serverStatus := range status {
+					if serverStatus.LastPingSuccess {
+						log.Printf("Server %s is healthy, last ping time: %v", serverName, serverStatus.LastPingTime)
+					} else {
+						log.Printf("Server %s is unhealthy, last ping time: %v, error: %s", serverName, serverStatus.LastPingTime, serverStatus.LastError)
+					}
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
 	// 示例：处理用户输入
 	content, toolResult, err := host.ProcessWithOpenAI(ctx, "请分析22+33=?这个算式，并调用对应方法，求结果")
 	if err != nil {
@@ -81,4 +104,6 @@ func main() {
 	bytes, _ := json.MarshalIndent(toolResult, "", "  ")
 	log.Printf("result = \n %s\n", bytes)
 
+	// 保持程序运行
+	select {}
 }
