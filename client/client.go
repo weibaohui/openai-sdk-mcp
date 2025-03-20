@@ -76,15 +76,15 @@ func main() {
 		log.Printf("Successfully connected to server: %s", server.Name)
 	}
 
-	content, toolResult, err := host.ProcessWithOpenAI(ctx, "请生成两个不大于10的随机数，并将这两个随机数进行求和，告诉我最终的结果")
-	// content, toolResult, err := host.ProcessWithOpenAI(ctx, "请计算56.66还有76.89的和")
+	// content, toolResult, err := host.ProcessWithOpenAI(ctx, "请生成两个不大于10的随机数，并将这两个随机数进行求和，告诉我最终的结果")
+	content, toolResult, err := host.ProcessWithOpenAI(ctx, "请分析22+33=?这个算式，并调用对应方法，求结果")
 
 	if err != nil {
 		log.Printf("processWithOpenAI failed: %v", err)
 		return
 	}
 	log.Printf("content = \n %s\n", content)
-	bytes, err := json.MarshalIndent(toolResult, "", "  ")
+	bytes, _ := json.MarshalIndent(toolResult, "", "  ")
 	log.Printf("result = \n %s\n", bytes)
 }
 
