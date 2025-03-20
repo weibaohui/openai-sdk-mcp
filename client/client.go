@@ -109,9 +109,9 @@ type MCPHost struct {
 	// 记录每个服务器的工具列表
 	Tools map[string][]mcp.Tool
 	// 记录每个服务器的资源能力
-	Resources map[string]mcp.Resource
+	Resources map[string][]mcp.Resource
 	// 记录每个服务器的提示能力
-	Prompts map[string]mcp.Prompt
+	Prompts map[string][]mcp.Prompt
 }
 
 // NewMCPHost 创建新的MCP管理器
@@ -120,8 +120,8 @@ func NewMCPHost() *MCPHost {
 		clients:   make(map[string]*client.SSEMCPClient),
 		configs:   make(map[string]ServerConfig),
 		Tools:     make(map[string][]mcp.Tool),
-		Resources: make(map[string]mcp.Resource),
-		Prompts:   make(map[string]mcp.Prompt),
+		Resources: make(map[string][]mcp.Resource),
+		Prompts:   make(map[string][]mcp.Prompt),
 	}
 }
 
@@ -172,10 +172,27 @@ func (m *MCPHost) ConnectServer(ctx context.Context, serverName string) error {
 		return fmt.Errorf("failed to initialize client for %s: %v", serverName, err)
 	}
 
-	// // 获取并存储服务器能力信息
-	// m.Tools[serverName] = initResult
-	// m.Resources[serverName] = initResult.ResourceCapabilities
-	// m.Prompts[serverName] = initResult.PromptCapabilities
+	// 获取并记录服务器能力
+	tools, err := m.GetTools(ctx, serverName)
+	if err != nil {
+		cli.Close()
+		return fmt.Errorf("failed to get tools for %s: %v", serverName, err)
+	}
+	m.Tools[serverName] = tools
+
+	resources, err := m.GetResources(ctx, serverName)
+	if err != nil {
+		cli.Close()
+		return fmt.Errorf("failed to get resources for %s: %v", serverName, err)
+	}
+	m.Resources[serverName] = resources
+
+	prompts, err := m.GetPrompts(ctx, serverName)
+	if err != nil {
+		cli.Close()
+		return fmt.Errorf("failed to get prompts for %s: %v", serverName, err)
+	}
+	m.Prompts[serverName] = prompts
 
 	m.clients[serverName] = cli
 	return nil
